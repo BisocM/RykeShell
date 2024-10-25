@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 20)
 
 include_directories(${PROJECT_SOURCE_DIR}/include)
 
-add_executable(RykeShell src/main.cpp
+add_executable(RykeShell src/ryke_shell.cpp
         include/ryke_shell.h
         src/parser.cpp
         src/executor.cpp
@@ -14,4 +14,6 @@ add_executable(RykeShell src/main.cpp
         include/commands.h
         src/commands.cpp
         include/input.h
-        include/utils.h)
+        include/utils.h
+        include/autocomplete.h
+        src/autocomplete.cpp)

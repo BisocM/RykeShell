@@ -6,6 +6,7 @@ std::vector<Command> parseCommandLine(const std::string& input) {
     Command cmd;
     std::istringstream iss(input);
     std::string token;
+
     while (iss >> token) {
         if (token == "|") {
             commands.push_back(cmd);
@@ -28,8 +29,11 @@ std::vector<Command> parseCommandLine(const std::string& input) {
             cmd.args.push_back(token);
         }
     }
-    if (!cmd.args.empty() || !cmd.inputFile.empty() || !cmd.outputFile.empty() || !cmd.appendFile.empty() || cmd.background) {
+
+    if (!cmd.args.empty() || !cmd.inputFile.empty() || !cmd.outputFile.empty() ||
+        !cmd.appendFile.empty() || cmd.background) {
         commands.push_back(cmd);
-    }
+        }
+
     return commands;
 }

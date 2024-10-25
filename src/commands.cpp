@@ -1,10 +1,16 @@
 #include "commands.h"
-#include "input.h"
+#include "ryke_shell.h"
 #include <iostream>
 #include <unistd.h>
 #include <cstring>
 #include <cerrno>
+#include <dirent.h>
+#include <iomanip>
 #include <sstream>
+#include <sys/stat.h>
+#include <pwd.h>
+#include <vector>
+#include <algorithm>
 
 std::map<std::string, CommandFunction> commandHandlers;
 
@@ -15,6 +21,7 @@ void registerCommands() {
     commandHandlers["history"] = cmdHistory;
     commandHandlers["alias"] = cmdAlias;
     commandHandlers["theme"] = cmdTheme;
+    commandHandlers["ls"] = cmdLs;
 }
 
 bool handleCommand(const Command& command) {
@@ -22,49 +29,46 @@ bool handleCommand(const Command& command) {
         return false;
     }
 
-    if (const std::string cmdName = command.args[0]; commandHandlers.contains(cmdName)) {
-        commandHandlers[cmdName](command);
+    const std::string cmdName = command.args[0];
+    if (const auto it = commandHandlers.find(cmdName); it != commandHandlers.end()) {
+        it->second(command);
         return true;
     }
     return false;
 }
 
-void cmdExit(const Command& command) {
+void cmdExit(const Command& /*command*/) {
+    resetTerminalSettings();
     exit(0);
 }
 
 void cmdCd(const Command& command) {
-    const std::string dir = (command.args.size() > 1) ? command.args[1] : getenv("HOME");
+    const std::string& dir = (command.args.size() > 1) ? command.args[1] : getenv("HOME");
     if (chdir(dir.c_str()) != 0) {
         std::cerr << "cd: " << strerror(errno) << '\n';
     }
 }
 
-void cmdPwd(const Command& command) {
-    if (char cwd[1024]; getcwd(cwd, sizeof(cwd)) != nullptr) {
+void cmdPwd(const Command& /*command*/) {
+    if (char cwd[1024]; getcwd(cwd, sizeof(cwd))) {
         std::cout << cwd << std::endl;
     } else {
         std::cerr << "pwd: " << strerror(errno) << '\n';
     }
 }
 
-void cmdHistory(const Command& command) {
+void cmdHistory(const Command& /*command*/) {
     if (history.empty()) {
         std::cout << "No commands in history." << std::endl;
         return;
     }
-    
-    const std::vector historyItems(history.begin(), history.end());
 
-    //Check if user made a selection
+    const std::vector<std::string> historyItems(history.begin(), history.end());
     if (const int selected = interactiveListSelection(historyItems, "Command History"); selected >= 0 && selected < static_cast<int>(historyItems.size())) {
-        //Execute the selected command
         std::string input = historyItems[selected];
 
-        //Expand variables
         input = expandVariables(input);
 
-        //Expand aliases
         std::string expandedInput = input;
         std::istringstream iss(input);
         std::string firstToken;
@@ -73,7 +77,6 @@ void cmdHistory(const Command& command) {
             expandedInput = aliases[firstToken] + input.substr(firstToken.length());
         }
 
-        //Parse and execute commands
         if (const std::vector<Command> commands = parseCommandLine(expandedInput); !commands.empty()) {
             if (!handleCommand(commands[0])) {
                 executeCommands(commands);
@@ -84,18 +87,15 @@ void cmdHistory(const Command& command) {
 
 void cmdAlias(const Command& command) {
     if (command.args.size() == 1) {
-        //List all aliases
-        for (const auto&[fst, snd] : aliases) {
-            std::cout << "alias " << fst << "='" << snd << "'\n";
+        for (const auto& [key, value] : aliases) {
+            std::cout << "alias " << key << "='" << value << "'\n";
         }
     } else {
-        //Set an alias
         for (size_t k = 1; k < command.args.size(); ++k) {
             std::string aliasStr = command.args[k];
-            if (size_t eqPos = aliasStr.find('='); eqPos != std::string::npos) {
+            if (const size_t eqPos = aliasStr.find('='); eqPos != std::string::npos) {
                 std::string key = aliasStr.substr(0, eqPos);
                 std::string value = aliasStr.substr(eqPos + 1);
-                //Remove quotes
                 if (!value.empty() && value.front() == '\'' && value.back() == '\'') {
                     value = value.substr(1, value.length() - 2);
                 }
@@ -107,7 +107,8 @@ void cmdAlias(const Command& command) {
 
 void cmdTheme(const Command& command) {
     if (command.args.size() > 1) {
-        if (const std::string color = command.args[1]; color == "red") {
+        const std::string& color = command.args[1];
+        if (color == "red") {
             promptColor = "\033[1;31m";
         } else if (color == "green") {
             promptColor = "\033[1;32m";
@@ -124,5 +125,62 @@ void cmdTheme(const Command& command) {
         }
     } else {
         std::cout << "Usage: theme [color]\n";
+    }
+}
+
+void cmdLs(const Command& command) {
+    std::string directory = ".";
+    if (command.args.size() > 1) {
+        directory = command.args[1];
+    }
+
+    DIR* dir = opendir(directory.c_str());
+    if (!dir) {
+        std::cerr << "ls: cannot access '" << directory << "': " << strerror(errno) << std::endl;
+        return;
+    }
+
+    dirent* entry;
+    std::vector<std::string> filenames;
+
+    while ((entry = readdir(dir)) != nullptr) {
+        if (entry->d_name[0] != '.') {
+            filenames.emplace_back(entry->d_name);
+        }
+    }
+    closedir(dir);
+
+    std::ranges::sort(filenames);
+
+    size_t maxLen = 0;
+    for (const auto& name : filenames) {
+        if (name.length() > maxLen) {
+            maxLen = name.length();
+        }
+    }
+
+    int count = 0;
+    for (const auto& name : filenames) {
+        std::string filepath = directory + "/" + name;
+        struct stat fileStat{};
+        if (stat(filepath.c_str(), &fileStat) == -1) {
+            perror("stat");
+            continue;
+        }
+
+        if (S_ISDIR(fileStat.st_mode)) {
+            std::cout << "\033[1;34m" << std::setw(maxLen + 2) << std::left << name << "\033[0m";
+        } else if (fileStat.st_mode & S_IXUSR) {
+            std::cout << "\033[1;32m" << std::setw(maxLen + 2) << std::left << name << "\033[0m";
+        } else {
+            std::cout << std::setw(maxLen + 2) << std::left << name;
+        }
+
+        if (++count % 8 == 0) {
+            std::cout << std::endl;
+        }
+    }
+    if (count % 8 != 0) {
+        std::cout << std::endl;
     }
 }

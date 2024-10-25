@@ -3,7 +3,7 @@
 
 #include <string>
 
-//Function Declarations
+void resetTerminalSettings();
 void displaySplashArt();
 void setupSignalHandlers();
 void sigintHandler(int sig);
