@@ -10,6 +10,14 @@
 #include <sstream>
 #include <cctype>
 
+#define ARROW_LEFT  1000
+#define ARROW_RIGHT 1001
+#define ARROW_UP    1002
+#define ARROW_DOWN  1003
+#define DEL_KEY     1004
+#define HOME_KEY    1005
+#define END_KEY     1006
+
 size_t commonPrefixLength(const std::string& s1, const std::string& s2) {
     const size_t len = std::min(s1.length(), s2.length());
     for (size_t i = 0; i < len; ++i) {
@@ -34,103 +42,140 @@ std::string readInputLine() {
         return "";
     }
 
-    char c;
-    std::string currentWord;
     size_t cursorPos = 0;
+    std::string currentWord;
+    bool displaySuggestion = true;
 
     while (true) {
-        ssize_t n = read(STDIN_FILENO, &c, 1);
-        if (n == -1) {
+        int c = readKey();
+        if (c == -1) {
             break;
         }
 
         if (c == '\n') {
-            //Clear any existing suggestion when user presses Enter
-            if (!currentWord.empty()) {
-                std::string suggestion = getSuggestion(currentWord, input);
-                if (!suggestion.empty()) {
-                    size_t suggestionLength = suggestion.length() - currentWord.length();
-                    //Move cursor to the end and clear the suggestion
-                    std::cout << "\033[" << suggestionLength << "C"; //Move cursor forward
-                    std::cout << "\033[K"; //Clear to end of line
-                }
-            }
             std::cout << std::endl;
             break;
         }
 
-        if (c == 127 || c == '\b') {
-            //Handle backspace
-            if (!input.empty()) {
-                input.pop_back();
-                if (!currentWord.empty()) {
-                    currentWord.pop_back();
-                }
-                //Remove character from screen
-                std::cout << "\b \b";
-                //Clear any existing suggestion
-                std::cout << "\033[K";
-                std::cout.flush();
-                cursorPos--;
-            }
-        } else if (isprint(c)) {
-            input += c;
-            if (isspace(c)) {
-                currentWord.clear();
-                //Clear any existing suggestion
-                std::cout << "\033[K";
-            } else {
-                currentWord += c;
-            }
-            std::cout << c;
+        else if (c == '\x03') { //Ctrl-C
+            input.clear();
+            cursorPos = 0;
+            std::cout << "^C\n" << getPrompt();
             std::cout.flush();
-            cursorPos++;
+            displaySuggestion = false;
+        }
 
-            //Show inline suggestion using correct casing
-            if (std::string suggestion = getSuggestion(currentWord, input); !suggestion.empty()) {
-                //Calculate the common prefix length
-                if (const size_t prefixLen = commonPrefixLength(currentWord, suggestion); prefixLen < suggestion.length()) {
-                    //Display the suggestion tail in grey
-                    std::string suggestionTail = suggestion.substr(prefixLen);
-                    std::cout << "\033[90m" << suggestionTail << "\033[0m";
-                    //Move cursor back to after user's input
-                    for (size_t i = 0; i < suggestionTail.length(); ++i) {
-                        std::cout << "\b";
-                    }
-                    std::cout.flush();
-                }
-            } else {
-                //No suggestion, clear to end of line
-                std::cout << "\033[K";
-            }
-        } else if (c == '\t') {
-            //Accept the suggestion if available
-            if (std::string suggestion = getSuggestion(currentWord, input); !suggestion.empty()) {
-                //Calculate the common prefix length
-                size_t prefixLen = commonPrefixLength(currentWord, suggestion);
-
-                //Erase the currentWord from input
-                input.erase(input.length() - currentWord.length(), currentWord.length());
-                input += suggestion;
-
-                //Update currentWord
-                currentWord = suggestion;
-
-                //Clear the current line and reprint prompt and input
-                std::cout << "\r\033[2K"; //Move to start of line and clear entire line
-                std::cout << getPrompt() << input; //Reprint prompt and input
-                std::cout.flush();
-
-                cursorPos = input.length();
-            } else {
-                //No suggestion or multiple suggestions - handle accordingly.
-                handleAutoComplete(input, currentWord, cursorPos);
+        else if (c == 127 || c == '\b') {
+            //Handle backspace
+            if (cursorPos > 0) {
+                input.erase(cursorPos - 1, 1);
+                cursorPos--;
+                displaySuggestion = true; //Recompute suggestion
             }
         }
+
+        else if (c == DEL_KEY) {
+            //Handle delete key
+            if (cursorPos < input.length()) {
+                input.erase(cursorPos, 1);
+                displaySuggestion = true; //Recompute suggestion
+            }
+        }
+
+        else if (c == ARROW_LEFT) {
+            if (cursorPos > 0) {
+                cursorPos--;
+                displaySuggestion = true; //Recompute suggestion
+            }
+        }
+
+        else if (c == ARROW_RIGHT) {
+            if (cursorPos < input.length()) {
+                cursorPos++;
+                displaySuggestion = true; //Recompute suggestion
+            }
+        }
+
+        else if (isprint(c)) {
+            input.insert(cursorPos, 1, c);
+            cursorPos++;
+            displaySuggestion = true;
+        }
+
+        else if (c == '\t') {
+            //Handle autocomplete
+            handleAutoComplete(input, currentWord, cursorPos);
+            displaySuggestion = false; //Suggestion has been handled
+            //Do not skip to next iteration; allow line to be redrawn
+        }
+
+        //Now, recompute currentWord and display suggestion if appropriate
+        size_t wordStart = cursorPos;
+        while (wordStart > 0 && !isspace(input[wordStart - 1])) {
+            wordStart--;
+        }
+        currentWord = input.substr(wordStart, cursorPos - wordStart);
+
+        //Get suggestion
+        std::string suggestion;
+        if (displaySuggestion && !currentWord.empty()) {
+            suggestion = getSuggestion(currentWord, input, cursorPos);
+        }
+
+        //Redraw the line
+        //Move cursor to the beginning of input line
+        std::cout << "\r";
+        //Clear the line
+        std::cout << "\033[K";
+        //Print the prompt
+        std::cout << getPrompt();
+        //Print the input
+        std::cout << input;
+
+        //If there's a suggestion, display suggestion tail in grey
+        if (!suggestion.empty() && suggestion.length() > currentWord.length()) {
+            std::string suggestionTail = suggestion.substr(currentWord.length());
+            //Save cursor position
+            std::cout << "\0337";
+            //Move cursor to the position where suggestion tail starts
+            size_t promptDisplayLen = getDisplayLength(getPrompt());
+            size_t suggestionPos = promptDisplayLen + cursorPos;
+            std::cout << "\033[" << suggestionPos + 1 << "G";
+            //Display the suggestion tail in grey
+            std::cout << "\033[90m" << suggestionTail << "\033[0m";
+            //Restore cursor position
+            std::cout << "\0338";
+        }
+
+        //Move cursor back to the correct position
+        const size_t promptDisplayLen = getDisplayLength(getPrompt());
+        const size_t cursorMove = promptDisplayLen + cursorPos;
+        std::cout << "\r\033[" << cursorMove + 1 << "G";
+        std::cout.flush();
+        displaySuggestion = true; //Reset for next iteration
     }
 
     tcsetattr(STDIN_FILENO, TCSANOW, &origTermios);
     return input;
+}
+
+size_t getDisplayLength(const std::string& str) {
+    size_t length = 0;
+    bool inEscape = false;
+    for (size_t i = 0; i < str.length(); ++i) {
+        if (inEscape) {
+            if (str[i] == 'm') {
+                inEscape = false;
+            }
+        } else {
+            if (str[i] == '\033') {
+                inEscape = true;
+            } else {
+                length++;
+            }
+        }
+    }
+    return length;
 }
 
 int interactiveListSelection(const std::vector<std::string>& items, const std::string& prompt) {
@@ -224,26 +269,34 @@ int interactiveListSelection(const std::vector<std::string>& items, const std::s
 }
 
 int readKey() {
+    int nread;
     char c;
-    while (true) {
-        ssize_t n = read(STDIN_FILENO, &c, 1);
-        if (n == -1) {
-            return -1;
-        }
+    char seq[3];
 
+    while ((nread = read(STDIN_FILENO, &c, 1)) != -1) {
         if (c == '\x1b') {
-            char seq[2];
             if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
             if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
 
             if (seq[0] == '[') {
-                if (seq[1] == 'A') return 'k'; //Up arrow
-                if (seq[1] == 'B') return 'j'; //Down arrow
-                if (seq[1] == 'C') return 'l'; //Right arrow
-                if (seq[1] == 'D') return 'h'; //Left arrow
+                switch (seq[1]) {
+                    case 'A': return ARROW_UP;
+                    case 'B': return ARROW_DOWN;
+                    case 'C': return ARROW_RIGHT;
+                    case 'D': return ARROW_LEFT;
+                    case '3': {
+                        if (read(STDIN_FILENO, &seq[2], 1) != 1) return '\x1b';
+                        if (seq[2] == '~') return DEL_KEY;
+                        break;
+                    }
+                    case 'H': return HOME_KEY;
+                    case 'F': return END_KEY;
+                    default: ;
+                }
             }
         } else {
             return c;
         }
     }
+    return -1;
 }
