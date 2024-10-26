@@ -9,6 +9,7 @@
 #include <dirent.h>
 #include <cstring>
 #include <cctype>
+#include <sys/stat.h>
 
 #include "input.h"
 
@@ -39,9 +40,10 @@ void handleAutoComplete(std::string& input, std::string& currentWord, size_t& cu
     const std::string prefix = currentWord;
     std::vector<std::string> matches;
 
-    //Determine if we're at the beginning of the command or in an argument
-
-    if (wordStart == 0) {
+    //If current word contains '/', treat it as a filename (with path)
+    if (currentWord.find('/') != std::string::npos) {
+        matches = getFilenames(prefix);
+    } else if (wordStart == 0) {
         matches = getExecutableNames(prefix);
     } else {
         matches = getFilenames(prefix);
@@ -100,9 +102,10 @@ std::string getSuggestion(const std::string& currentWord, const std::string& inp
 
     std::vector<std::string> matches;
 
-    //Determine if we're at the beginning of the command or in an argument
-
-    if (const size_t wordStart = cursorPos - currentWord.length(); wordStart == 0) {
+    //If current word contains '/', treat it as a filename (with path)
+    if (currentWord.find('/') != std::string::npos) {
+        matches = getFilenames(currentWord);
+    } else if (cursorPos - currentWord.length() == 0) {
         matches = getExecutableNames(currentWord);
     } else {
         matches = getFilenames(currentWord);
@@ -154,14 +157,38 @@ std::vector<std::string> getExecutableNames(const std::string& prefix) {
 
 std::vector<std::string> getFilenames(const std::string& prefix) {
     std::vector<std::string> filenames;
-    DIR* dp = opendir(".");
+
+    std::string dir, filePrefix;
+
+    //Check if prefix contains '/'
+
+    if (const size_t slashPos = prefix.find_last_of("/"); slashPos != std::string::npos) {
+        //Prefix contains '/', split into directory and file prefix
+        dir = prefix.substr(0, slashPos + 1); //Includes the '/'
+        filePrefix = prefix.substr(slashPos + 1);
+    } else {
+        //No '/', use current directory
+        dir = "./";
+        filePrefix = prefix;
+    }
+
+    //Now open the directory 'dir'
+    DIR* dp = opendir(dir.c_str());
     if (!dp) {
         return filenames;
     }
+
     dirent* entry;
     while ((entry = readdir(dp)) != nullptr) {
-        if (std::string name = entry->d_name; startsWithCaseInsensitive(name, prefix)) {
-            filenames.push_back(name); //Store the filename with original casing
+        if (std::string name = entry->d_name; startsWithCaseInsensitive(name, filePrefix)) {
+            std::string fullPath = dir + name;
+            struct stat statbuf{};
+            if (stat(fullPath.c_str(), &statbuf) == 0 && S_ISDIR(statbuf.st_mode)) {
+                //Append '/' to directories
+                filenames.push_back(fullPath + "/");
+            } else {
+                filenames.push_back(fullPath);
+            }
         }
     }
     closedir(dp);

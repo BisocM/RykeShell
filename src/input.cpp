@@ -31,7 +31,6 @@ size_t commonPrefixLength(const std::string& s1, const std::string& s2) {
 std::string readInputLine() {
     std::string input;
     termios rawTermios = origTermios;
-
     //Disable canonical mode and echo
     rawTermios.c_lflag &= ~(ICANON | ECHO);
     rawTermios.c_cc[VMIN] = 1;
@@ -47,7 +46,7 @@ std::string readInputLine() {
     bool displaySuggestion = true;
 
     while (true) {
-        int c = readKey();
+        const int c = readKey();
         if (c == -1) {
             break;
         }
@@ -57,7 +56,7 @@ std::string readInputLine() {
             break;
         }
 
-        else if (c == '\x03') { //Ctrl-C
+        if (c == '\x03') { //Ctrl-C
             input.clear();
             cursorPos = 0;
             std::cout << "^C\n" << getPrompt();
@@ -138,7 +137,7 @@ std::string readInputLine() {
             //Save cursor position
             std::cout << "\0337";
             //Move cursor to the position where suggestion tail starts
-            size_t promptDisplayLen = getDisplayLength(getPrompt());
+            const size_t promptDisplayLen = getDisplayLength(getPrompt());
             size_t suggestionPos = promptDisplayLen + cursorPos;
             std::cout << "\033[" << suggestionPos + 1 << "G";
             //Display the suggestion tail in grey
@@ -208,7 +207,8 @@ int interactiveListSelection(const std::vector<std::string>& items, const std::s
     std::cout.flush();
 
     while (true) {
-        if (const int key = readKey(); key == 'q' || key == '\x1b') {
+        int key = readKey();
+        if (key == 'q' || key == '\x1b') {
             //Exit interactive mode
             tcsetattr(STDIN_FILENO, TCSAFLUSH, &origTermios);
             //Show cursor
@@ -223,31 +223,28 @@ int interactiveListSelection(const std::vector<std::string>& items, const std::s
             std::cout << "\033[" << numItems + 3 << "A";
             std::cout.flush();
             return -1;
-        } else {
-            if (key == '\n' || key == '\r') {
-                //User selected an item
-                tcsetattr(STDIN_FILENO, TCSAFLUSH, &origTermios);
-                //Show cursor
-                std::cout << "\033[?25h";
-                //Move cursor up to the top of the list
-                std::cout << "\033[" << numItems + 3 << "A";
-                //Clear the list lines
-                for (int i = 0; i < numItems + 3; ++i) {
-                    std::cout << "\033[2K\033[B";
-                }
-                //Move cursor back up to the top
-                std::cout << "\033[" << numItems + 3 << "A";
-                std::cout.flush();
-                return selected;
+        } else if (key == '\n' || key == '\r') {
+            //User selected an item
+            tcsetattr(STDIN_FILENO, TCSAFLUSH, &origTermios);
+            //Show cursor
+            std::cout << "\033[?25h";
+            //Move cursor up to the top of the list
+            std::cout << "\033[" << numItems + 3 << "A";
+            //Clear the list lines
+            for (int i = 0; i < numItems + 3; ++i) {
+                std::cout << "\033[2K\033[B";
             }
-            if (key == 'k') {
-                if (selected > 0) {
-                    selected--;
-                }
-            } else if (key == 'j') {
-                if (selected < numItems - 1) {
-                    selected++;
-                }
+            //Move cursor back up to the top
+            std::cout << "\033[" << numItems + 3 << "A";
+            std::cout.flush();
+            return selected;
+        } else if (key == ARROW_UP || key == 'k') {
+            if (selected > 0) {
+                selected--;
+            }
+        } else if (key == ARROW_DOWN || key == 'j') {
+            if (selected < numItems - 1) {
+                selected++;
             }
         }
 
