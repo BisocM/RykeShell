@@ -22,6 +22,7 @@ void registerCommands() {
     commandHandlers["alias"] = cmdAlias;
     commandHandlers["theme"] = cmdTheme;
     commandHandlers["ls"] = cmdLs;
+    commandHandlers["export"] = cmdExport;
 }
 
 bool handleCommand(const Command& command) {
@@ -125,6 +126,27 @@ void cmdTheme(const Command& command) {
         }
     } else {
         std::cout << "Usage: theme [color]\n";
+    }
+}
+
+void cmdExport(const Command &command) {
+    if (command.args.size() > 1) {
+        std::string assignment = command.args[1];
+        if (const size_t eqPos = assignment.find('='); eqPos != std::string::npos) {
+            const std::string var = assignment.substr(0, eqPos);
+            const std::string value = assignment.substr(eqPos + 1);
+
+            //Set the environment variable and check if it succeeded
+            if (setenv(var.c_str(), value.c_str(), 1) == 0) {
+                std::cout << "Environment variable " << var << " set to " << value << std::endl;
+            } else {
+                std::cerr << "Failed to set environment variable " << var << std::endl;
+            }
+        } else {
+            std::cerr << "Invalid format. Use VAR=value" << std::endl;
+        }
+    } else {
+        std::cerr << "No variable provided. Use: export VAR=value" << std::endl;
     }
 }
 

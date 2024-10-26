@@ -12,6 +12,7 @@ void cmdHistory(const Command& command);
 void cmdAlias(const Command& command);
 void cmdTheme(const Command& command);
 void cmdLs(const Command& command);
+void cmdExport(const Command& command);
 
 extern std::map<std::string, CommandFunction> commandHandlers;
 
