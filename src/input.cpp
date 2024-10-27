@@ -45,6 +45,8 @@ std::string readInputLine() {
     std::string currentWord;
     bool displaySuggestion = true;
 
+    int historyIndex = static_cast<int>(history.size()); //Initialize history index
+
     while (true) {
         const int c = readKey();
         if (c == -1) {
@@ -62,10 +64,12 @@ std::string readInputLine() {
             std::cout << "^C\n" << getPrompt();
             std::cout.flush();
             displaySuggestion = false;
+            historyIndex = static_cast<int>(history.size());
         }
 
         else if (c == 127 || c == '\b') {
             //Handle backspace
+            historyIndex = static_cast<int>(history.size());
             if (cursorPos > 0) {
                 input.erase(cursorPos - 1, 1);
                 cursorPos--;
@@ -75,6 +79,7 @@ std::string readInputLine() {
 
         else if (c == DEL_KEY) {
             //Handle delete key
+            historyIndex = static_cast<int>(history.size());
             if (cursorPos < input.length()) {
                 input.erase(cursorPos, 1);
                 displaySuggestion = true; //Recompute suggestion
@@ -95,7 +100,34 @@ std::string readInputLine() {
             }
         }
 
+        else if (c == ARROW_UP) {
+            if (!history.empty() && historyIndex > 0) {
+                historyIndex--;
+                input = history[historyIndex];
+                cursorPos = input.length();
+                displaySuggestion = false;
+            }
+        }
+
+        else if (c == ARROW_DOWN) {
+            if (!history.empty()) {
+                if (historyIndex < static_cast<int>(history.size()) - 1) {
+                    historyIndex++;
+                    input = history[historyIndex];
+                    cursorPos = input.length();
+                    displaySuggestion = false;
+                } else {
+                    //Reached end of history
+                    historyIndex = static_cast<int>(history.size());
+                    input.clear();
+                    cursorPos = 0;
+                    displaySuggestion = true;
+                }
+            }
+        }
+
         else if (isprint(c)) {
+            historyIndex = static_cast<int>(history.size());
             input.insert(cursorPos, 1, c);
             cursorPos++;
             displaySuggestion = true;
@@ -138,7 +170,7 @@ std::string readInputLine() {
             std::cout << "\0337";
             //Move cursor to the position where suggestion tail starts
             const size_t promptDisplayLen = getDisplayLength(getPrompt());
-            size_t suggestionPos = promptDisplayLen + cursorPos;
+            const size_t suggestionPos = promptDisplayLen + cursorPos;
             std::cout << "\033[" << suggestionPos + 1 << "G";
             //Display the suggestion tail in grey
             std::cout << "\033[90m" << suggestionTail << "\033[0m";
