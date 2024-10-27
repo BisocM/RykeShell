@@ -12,6 +12,8 @@
 #include <vector>
 #include <algorithm>
 
+#include "job_control.h"
+
 std::map<std::string, CommandFunction> commandHandlers;
 
 void registerCommands() {
@@ -23,6 +25,87 @@ void registerCommands() {
     commandHandlers["theme"] = cmdTheme;
     commandHandlers["ls"] = cmdLs;
     commandHandlers["export"] = cmdExport;
+    commandHandlers["jobs"] = cmdJobs;
+    commandHandlers["fg"] = cmdFg;
+    commandHandlers["bg"] = cmdBg;
+}
+
+void cmdJobs(const Command& /*command*/) {
+    listJobs();
+}
+
+void cmdFg(const Command& command) {
+    Job* job = nullptr;
+
+    if (command.args.size() == 1) {
+        //No job ID specified, use the last job
+        if (!jobList.empty()) {
+            job = &jobList.back();
+        } else {
+            std::cerr << "fg: no current job\n";
+            return;
+        }
+    } else {
+        std::string arg = command.args[1];
+        if (arg[0] == '%') {
+            arg = arg.substr(1);
+        }
+        int jobID;
+        try {
+            jobID = std::stoi(arg);
+        } catch (const std::invalid_argument&) {
+            std::cerr << "fg: invalid job id\n";
+            return;
+        } catch (const std::out_of_range&) {
+            std::cerr << "fg: job id out of range\n";
+            return;
+        }
+
+        job = findJobByID(jobID);
+        if (!job) {
+            std::cerr << "fg: no such job\n";
+            return;
+        }
+    }
+
+    bringJobToForeground(job, true);
+}
+
+void cmdBg(const Command& command) {
+    Job* job = nullptr;
+
+    if (command.args.size() == 1) {
+        //No job ID specified, use the last job
+        if (!jobList.empty()) {
+            job = &jobList.back();
+        } else {
+            std::cerr << "bg: no current job\n";
+            return;
+        }
+    } else {
+        std::string arg = command.args[1];
+        if (arg[0] == '%') {
+            arg = arg.substr(1);
+        }
+        int jobID;
+        try {
+            jobID = std::stoi(arg);
+        } catch (const std::invalid_argument&) {
+            std::cerr << "bg: invalid job id\n";
+            return;
+        } catch (const std::out_of_range&) {
+            std::cerr << "bg: job id out of range\n";
+            return;
+        }
+
+        job = findJobByID(jobID);
+        if (!job) {
+            std::cerr << "bg: no such job\n";
+            return;
+        }
+    }
+
+    continueJobInBackground(job, true);
 }
 
 bool handleCommand(const Command& command) {

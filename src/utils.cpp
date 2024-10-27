@@ -8,9 +8,12 @@
 #include <sstream>
 #include <cstdlib>
 #include <termios.h>
+#include <sys/wait.h>
+
+#include "job_control.h"
 
 void resetTerminalSettings() {
-    tcsetattr(STDIN_FILENO, TCSANOW, &origTermios);
+    tcsetattr(STDIN_FILENO, TCSANOW, &shellTermios);
 }
 
 void displaySplashArt() {
@@ -31,10 +34,60 @@ void setupSignalHandlers() {
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART;
     sigaction(SIGINT, &sa, nullptr);
+
+    struct sigaction sa_chld{};
+    sa_chld.sa_handler = sigchldHandler;
+    sigemptyset(&sa_chld.sa_mask);
+    sa_chld.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+    sigaction(SIGCHLD, &sa_chld, nullptr);
+
+    struct sigaction sa_tstp{};
+    sa_tstp.sa_handler = sigtstpHandler;
+    sigemptyset(&sa_tstp.sa_mask);
+    sa_tstp.sa_flags = SA_RESTART;
+    sigaction(SIGTSTP, &sa_tstp, nullptr);
 }
 
 void sigintHandler(int /*sig*/) {
+    //Send SIGINT to the foreground process group
+    if (shellIsInteractive) {
+        kill(-shellPGID, SIGINT);
+    }
     std::cout << std::endl;
+}
+
+void sigtstpHandler(int /*sig*/) {
+    //Send SIGTSTP to the foreground process group
+    if (shellIsInteractive) {
+        kill(-shellPGID, SIGTSTP);
+    }
+}
+
+void sigchldHandler(int /*sig*/) {
+    const int saved_errno = errno;
+    pid_t pid;
+    int status;
+
+    while ((pid = waitpid(-1, &status, WNOHANG | WUNTRACED | WCONTINUED)) > 0) {
+        pid_t pgid = getpgid(pid);
+        Job* job = findJob(pgid);
+        if (!job) continue;
+
+        if (WIFEXITED(status) || WIFSIGNALED(status)) {
+            //Process terminated
+            removeJob(pgid);
+        } else if (WIFSTOPPED(status)) {
+            //Process stopped
+            updateJobStatus(pgid, false, true);
+            std::cout << "\n[" << job->id << "] Stopped    " << job->command << std::endl;
+            std::cout << getPrompt();
+            std::cout.flush();
+        } else if (WIFCONTINUED(status)) {
+            //Process continued
+            updateJobStatus(pgid, true, false);
+        }
+    }
+    errno = saved_errno;
 }
 
 std::string expandVariables(const std::string& input) {

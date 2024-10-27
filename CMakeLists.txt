@@ -16,4 +16,6 @@ add_executable(RykeShell src/ryke_shell.cpp
         include/input.h
         include/utils.h
         include/autocomplete.h
-        src/autocomplete.cpp)
+        src/autocomplete.cpp
+        include/job_control.h
+        src/job_control.cpp)

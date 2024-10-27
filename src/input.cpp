@@ -30,7 +30,7 @@ size_t commonPrefixLength(const std::string& s1, const std::string& s2) {
 
 std::string readInputLine() {
     std::string input;
-    termios rawTermios = origTermios;
+    termios rawTermios = shellTermios;
     //Disable canonical mode and echo
     rawTermios.c_lflag &= ~(ICANON | ECHO);
     rawTermios.c_cc[VMIN] = 1;
@@ -154,7 +154,7 @@ std::string readInputLine() {
         displaySuggestion = true; //Reset for next iteration
     }
 
-    tcsetattr(STDIN_FILENO, TCSANOW, &origTermios);
+    tcsetattr(STDIN_FILENO, TCSANOW, &shellTermios);
     return input;
 }
 
@@ -183,7 +183,7 @@ int interactiveListSelection(const std::vector<std::string>& items, const std::s
         return -1;
     }
 
-    termios rawTermios = origTermios;
+    termios rawTermios = shellTermios;
 
     rawTermios.c_lflag &= ~(ECHO | ICANON | ISIG);
     rawTermios.c_iflag &= ~(IXON | ICRNL);
@@ -210,7 +210,7 @@ int interactiveListSelection(const std::vector<std::string>& items, const std::s
         int key = readKey();
         if (key == 'q' || key == '\x1b') {
             //Exit interactive mode
-            tcsetattr(STDIN_FILENO, TCSAFLUSH, &origTermios);
+            tcsetattr(STDIN_FILENO, TCSAFLUSH, &shellTermios);
             //Show cursor
             std::cout << "\033[?25h";
             //Move cursor up to the top of the list
@@ -225,7 +225,7 @@ int interactiveListSelection(const std::vector<std::string>& items, const std::s
             return -1;
         } else if (key == '\n' || key == '\r') {
             //User selected an item
-            tcsetattr(STDIN_FILENO, TCSAFLUSH, &origTermios);
+            tcsetattr(STDIN_FILENO, TCSAFLUSH, &shellTermios);
             //Show cursor
             std::cout << "\033[?25h";
             //Move cursor up to the top of the list

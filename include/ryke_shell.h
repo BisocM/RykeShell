@@ -13,8 +13,10 @@ extern const size_t HISTORY_LIMIT;
 extern std::deque<std::string> history;
 extern std::map<std::string, std::string> aliases;
 extern std::string promptColor;
-
-extern termios origTermios;
+extern termios shellTermios;
+extern pid_t shellPGID;
+extern int shellTerminal;
+extern bool shellIsInteractive;
 
 struct Command {
     std::vector<std::string> args;
@@ -26,9 +28,14 @@ struct Command {
 
 using CommandFunction = std::function<void(const Command&)>;
 
-void displaySplashArt();
+void initShell();
+
 void setupSignalHandlers();
 void sigintHandler(int sig);
+void sigtstpHandler(int sig);
+void sigchldHandler(int sig);
+
+void displaySplashArt();
 std::string expandVariables(const std::string& input);
 std::string getPrompt();
 void resetTerminalSettings();

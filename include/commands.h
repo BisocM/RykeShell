@@ -13,6 +13,9 @@ void cmdAlias(const Command& command);
 void cmdTheme(const Command& command);
 void cmdLs(const Command& command);
 void cmdExport(const Command& command);
+void cmdJobs(const Command& command);
+void cmdFg(const Command& command);
+void cmdBg(const Command& command);
 
 extern std::map<std::string, CommandFunction> commandHandlers;
 
