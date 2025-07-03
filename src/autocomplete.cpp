@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <unistd.h>
 #include <dirent.h>
-#include <cstring>
 #include <cctype>
 #include <sys/stat.h>
 
@@ -155,48 +154,79 @@ std::vector<std::string> getExecutableNames(const std::string& prefix) {
     return executables;
 }
 
-std::vector<std::string> getFilenames(const std::string& prefix) {
+std::vector<std::string> getFilenames(const std::string& prefix)
+{
     std::vector<std::string> filenames;
 
-    std::string dir, filePrefix;
+    /*----------------------------------------------------------
+      Split the prefix into “directory part” and “file part”.
+      E.g.   "src/Ry"   → dir="src/"   filePrefix="Ry"
+             "./Ry"     → dir="./"     filePrefix="Ry"
+             "Ry"       → dir="./"     filePrefix="Ry"
+    ----------------------------------------------------------*/
+    std::string dir  = "./";
+    std::string filePrefix = prefix;
+    const auto slashPos = prefix.find_last_of('/');
 
-    //Check if prefix contains '/'
-
-    if (const size_t slashPos = prefix.find_last_of("/"); slashPos != std::string::npos) {
-        //Prefix contains '/', split into directory and file prefix
-        dir = prefix.substr(0, slashPos + 1); //Includes the '/'
+    const bool userTypedSlash = (slashPos != std::string::npos);
+    if (userTypedSlash) {
+        dir        = prefix.substr(0, slashPos + 1);   // keep the slash
         filePrefix = prefix.substr(slashPos + 1);
-    } else {
-        //No '/', use current directory
-        dir = "./";
-        filePrefix = prefix;
     }
 
-    //Now open the directory 'dir'
+    /*----------------------------------------------------------
+      Scan the directory.
+    ----------------------------------------------------------*/
     DIR* dp = opendir(dir.c_str());
-    if (!dp) {
-        return filenames;
-    }
+    if (!dp)
+        return filenames;          // cannot open ‒ return empty
 
     dirent* entry;
     while ((entry = readdir(dp)) != nullptr) {
-        if (std::string name = entry->d_name; startsWithCaseInsensitive(name, filePrefix)) {
-            std::string fullPath = dir + name;
-            struct stat statbuf{};
-            if (stat(fullPath.c_str(), &statbuf) == 0 && S_ISDIR(statbuf.st_mode)) {
-                //Append '/' to directories
-                filenames.push_back(fullPath + "/");
-            } else {
-                filenames.push_back(fullPath);
-            }
+        const std::string name = entry->d_name;
+        if (!startsWithCaseInsensitive(name, filePrefix))
+            continue;
+
+        const std::string fullPath = dir + name;
+
+        struct stat st{};
+        if (stat(fullPath.c_str(), &st) == 0) {
+            std::string candidate;
+
+            /* --------------------------------------------
+               Decide what to put into ‘candidate’:
+
+               – If the user typed a slash, echo it back
+                 (so "./Ry" completes to "./RykeShell").
+
+               – Otherwise return only the bare name,
+                 so "Ry" completes to "RykeShell" (not
+                 "RyRykeShell").
+            ---------------------------------------------*/
+            if (userTypedSlash)
+                candidate = fullPath;
+            else
+                candidate = name;
+
+            if (S_ISDIR(st.st_mode))
+                candidate += '/';
+
+            filenames.push_back(candidate);
         }
     }
     closedir(dp);
 
-    //Sort filenames case-insensitively but keep original casing
-    std::ranges::sort(filenames, [](const std::string& a, const std::string& b) {
-        return toLowerCase(a) < toLowerCase(b);
-    });
+    /*----------------------------------------------------------
+      Case–insensitive sort and deduplication.
+    ----------------------------------------------------------*/
+    std::ranges::sort(filenames, [](const std::string& a,
+                                    const std::string& b)
+                      { return toLowerCase(a) < toLowerCase(b); });
 
+    const auto newEnd = std::ranges::unique(filenames,
+                       [](const std::string& a, const std::string& b)
+                       { return toLowerCase(a) == toLowerCase(b); }).begin();
+
+    filenames.erase(newEnd, filenames.end());
     return filenames;
 }
