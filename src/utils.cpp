@@ -41,6 +41,21 @@ std::string expandVariables(const std::string& input) {
     std::string output;
     size_t pos = 0;
 
+    // ======= Tilde Expansion ========
+    std::istringstream tokStream(input);
+    std::ostringstream expandedTokStream;
+    std::string token;
+    bool firstToken = true;
+
+    while (tokStream >> token) {
+        if (!firstToken)
+            expandedTokStream << ' ';
+        expandedTokStream << expandTilde(token);
+        firstToken = false;
+    }
+    const std::string withTildesExpanded = expandedTokStream.str();
+
+    // ======= Dollar Variable Expansion ${VAR} ========
     while (pos < input.length()) {
         if (input[pos] == '$') {
             if (pos + 1 < input.length() && input[pos + 1] == '{') {
@@ -110,4 +125,39 @@ std::string getPrompt() {
     prompt += "\033[0m$ ";
 
     return prompt;
+}
+
+std::string expandTilde(const std::string& path)
+{
+    if (path.empty() || path[0] != '~')
+        return path;
+
+    // Figure out whose home directory is requested
+    const char* home = nullptr;
+    std::string userPart;
+    const auto slashPos = path.find('/');
+    if (slashPos == std::string::npos)
+        userPart = path.substr(1);
+    else
+        userPart = path.substr(1, slashPos - 1);
+
+    if (userPart.empty()) {
+        home = getenv("HOME");
+        if (!home) {
+            if (const auto pw = getpwuid(getuid()); pw)
+                home = pw->pw_dir;
+        }
+    } else {
+        if (const auto pw = getpwnam(userPart.c_str()); pw)
+            home = pw->pw_dir;
+    }
+
+    if (!home) // Give up :(
+        return path;
+
+    // Append the remainder (if any)
+    if (slashPos == std::string::npos)
+        return std::string(home);
+
+    return std::string(home) + path.substr(slashPos);
 }

@@ -12,6 +12,8 @@
 #include <vector>
 #include <algorithm>
 
+#include "utils.h"
+
 std::map<std::string, CommandFunction> commandHandlers;
 
 void registerCommands() {
@@ -43,9 +45,21 @@ void cmdExit(const Command& /*command*/) {
     exit(0);
 }
 
-void cmdCd(const Command& command) {
-    const std::string& dir = (command.args.size() > 1) ? command.args[1] : getenv("HOME");
-    if (chdir(dir.c_str()) != 0) {
+void cmdCd(const Command& command)
+{
+    std::string target;
+    if (command.args.size() == 1) {
+        const char* home = getenv("HOME");
+        if (!home) {
+            if (auto pw = getpwuid(getuid()); pw)
+                home = pw->pw_dir;
+        }
+        target = home ? home : "/";
+    } else {
+        target = expandTilde(command.args[1]);
+    }
+
+    if (chdir(target.c_str()) != 0) {
         std::cerr << "cd: " << strerror(errno) << '\n';
     }
 }
