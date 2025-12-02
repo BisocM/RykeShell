@@ -3,13 +3,14 @@
 
 #include <string>
 
-void resetTerminalSettings();
+namespace ryke {
+
 void displaySplashArt();
-void setupSignalHandlers();
-void sigintHandler(int sig);
-
 std::string expandTilde(const std::string& path);
-std::string expandVariables(const std::string& input);
-std::string getPrompt();
+class ShellOptions;
 
-#endif
+std::string expandVariables(const std::string& input, const ShellOptions* options = nullptr);
+
+} // namespace ryke
+
+#endif //UTILS_H

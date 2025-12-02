@@ -1,12 +1,6 @@
 #ifndef INPUT_H
 #define INPUT_H
 
-#include <string>
-#include <vector>
+#include "ryke_shell.h"
 
-std::string readInputLine();
-int interactiveListSelection(const std::vector<std::string>& items, const std::string& prompt);
-size_t getDisplayLength(const std::string& str);
-int readKey();
-
-#endif
+#endif //INPUT_H
